@@ -105,7 +105,7 @@ export function BoxOfficeDuel() {
         type="button"
         onClick={showCategorySelect}
         disabled={!isGameOver}
-        className="rounded-md border border-[#e8b339]/35 bg-[#241f2c] px-4 py-10 text-xs font-bold uppercase tracking-wide text-[#e8b339] transition hover:border-[#e8b339] hover:bg-[#2c2733] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b339] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#9a93a6]/45 disabled:hover:bg-[#241f2c]"
+        className="rounded-md border border-[#e8b339]/35 bg-[#241f2c] px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-[#e8b339] transition hover:border-[#e8b339] hover:bg-[#2c2733] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b339] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#9a93a6]/45 disabled:hover:bg-[#241f2c]"
       >
         Changer de catégorie
       </button>
