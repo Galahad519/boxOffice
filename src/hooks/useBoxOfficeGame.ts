@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CATEGORIES, getCategory, type CategoryId } from '../data/categories'
 import { FALLBACK_MOVIES } from '../data/fallbackMovies'
 import { drawPair, filterMoviesByCategory, shuffleItems } from '../lib/movies'
-import { fetchTopScores, submitScore } from '../services/leaderboard'
+import { fetchBestScore, fetchTopScores, submitScore } from '../services/leaderboard'
 import { isSupabaseConfigured } from '../services/supabase'
 import {
   fetchDiscoverPage,
@@ -118,6 +118,17 @@ export function useBoxOfficeGame() {
     if (Number.isFinite(savedBestScore)) {
       setBestScore(savedBestScore)
     }
+
+    async function loadGlobalBestScore() {
+      if (!isSupabaseConfigured) return
+
+      const best = await fetchBestScore()
+      if (typeof best.data === 'number') {
+        setBestScore(best.data)
+      }
+    }
+
+    void loadGlobalBestScore()
 
     return () => {
       if (timeoutRef.current) {
@@ -354,6 +365,11 @@ export function useBoxOfficeGame() {
       const topScores = await fetchTopScores(LEADERBOARD_LIMIT)
       setLeaderboard(topScores.data)
 
+      const globalBestScore = topScores.data[0]?.score ?? submitted.data?.score
+      if (typeof globalBestScore === 'number') {
+        setBestScore(globalBestScore)
+      }
+
       if (submitted.error || topScores.error) {
         setLeaderboardStatus(topScores.data.length ? 'ready' : 'unavailable')
         setLeaderboardMessage(submitted.error ?? topScores.error)
@@ -407,12 +423,15 @@ export function useBoxOfficeGame() {
       if (correct) {
         setScore((currentScore) => {
           const nextScore = currentScore + 1
-          setBestScore((currentBestScore) => {
-            if (nextScore <= currentBestScore) return currentBestScore
 
-            persistBestScore(nextScore)
-            return nextScore
-          })
+          if (!isSupabaseConfigured) {
+            setBestScore((currentBestScore) => {
+              if (nextScore <= currentBestScore) return currentBestScore
+
+              persistBestScore(nextScore)
+              return nextScore
+            })
+          }
 
           return nextScore
         })

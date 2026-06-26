@@ -95,3 +95,29 @@ export async function fetchTopScores(
     }
   }
 }
+
+export async function fetchBestScore(): Promise<{ data: number | null; error: string | null }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { data: null, error: 'Classement en ligne non configuré.' }
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('scores')
+      .select('score')
+      .order('score', { ascending: false })
+      .limit(1)
+      .maybeSingle<{ score: number }>()
+
+    if (error) {
+      return { data: null, error: error.message }
+    }
+
+    return { data: data?.score ?? 0, error: null }
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Erreur réseau Supabase.',
+    }
+  }
+}
