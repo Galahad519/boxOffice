@@ -25,7 +25,7 @@ type TmdbDiscoverResponse = {
   total_pages?: number
 }
 
-type TmdbMovieDetails = {
+export type TmdbMovieDetails = {
   id: number
   title?: string
   original_title?: string
@@ -60,11 +60,16 @@ export function toInternalMovie(details: TmdbMovieDetails): Movie {
   }
 }
 
-export async function fetchDiscoverPage(key: string, page: number, genreId: number | null) {
+export async function fetchDiscoverPage(
+  key: string,
+  page: number,
+  genreId: number | null,
+  sortBy: string,
+) {
   const params = new URLSearchParams({
     api_key: key,
     language: 'fr-FR',
-    sort_by: 'popularity.desc',
+    sort_by: sortBy,
     include_adult: 'false',
     'vote_count.gte': '300',
     page: String(page),

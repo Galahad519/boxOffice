@@ -53,12 +53,14 @@ export function shuffleItems<T>(items: T[]) {
 }
 
 export function filterMoviesByCategory(source: Movie[], category: Category) {
-  if (category.id === 'random') return source
+  if (category.id === 'top-100') {
+    return [...source].sort((first, second) => second.revenue - first.revenue)
+  }
 
   const keywords = category.fallbackKeywords.map(normalize)
   const matches = source.filter((movie) => {
-    const tag = normalize(movie.tag)
-    return keywords.some((keyword) => tag.includes(keyword))
+    const primaryTag = normalize(movie.tag.split(' / ')[0] ?? '')
+    return keywords.some((keyword) => primaryTag.includes(keyword))
   })
 
   return matches.length >= 2 ? matches : source

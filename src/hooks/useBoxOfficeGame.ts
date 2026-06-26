@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CATEGORIES, getCategory, type CategoryId } from '../data/categories'
 import { FALLBACK_MOVIES } from '../data/fallbackMovies'
 import { drawPair, filterMoviesByCategory, shuffleItems } from '../lib/movies'
+import { fetchTopScores, submitScore } from '../services/leaderboard'
+import { isSupabaseConfigured } from '../services/supabase'
 import {
   fetchDiscoverPage,
   fetchMovieDetails,
@@ -9,16 +11,26 @@ import {
   PAGE_DELAY_MS,
   POOL_CAP,
   toInternalMovie,
+  type TmdbMovieDetails,
 } from '../services/tmdb'
-import type { GamePhase, Movie, PickSide } from '../types/movie'
-
-type GameScreen = 'category-select' | 'loading' | 'playing'
+import type { GamePhase, GameScreen, LeaderboardEntry, Movie, PickSide, SubmittedScore } from '../types/movie'
 
 const BEST_SCORE_KEY = 'box-office-duel-best-score'
+const PLAYER_PSEUDO_KEY = 'box-office-duel-pseudo'
+const LEADERBOARD_LIMIT = 20
 const REVEAL_DELAY_MS = 900
 const ROUND_DURATION_SECONDS = 60
-const MIN_POOL_BEFORE_FIRST_TURN = 20
+const MIN_POOL_BEFORE_FIRST_TURN = 2
+const TOP_100_POOL_CAP = 100
+const TOP_100_DISCOVER_PAGES = 5
 const INITIAL_TMDB_KEY = import.meta.env.VITE_TMDB_API_KEY?.trim() ?? ''
+const DISCOVER_SORT_OPTIONS = [
+  'popularity.desc',
+  'revenue.desc',
+  'vote_count.desc',
+  'vote_average.desc',
+  'primary_release_date.desc',
+]
 
 export function useBoxOfficeGame() {
   const [champion, setChampion] = useState<Movie | null>(null)
@@ -30,16 +42,26 @@ export function useBoxOfficeGame() {
   const [bestScore, setBestScore] = useState(0)
   const [timeLeft, setTimeLeft] = useState(ROUND_DURATION_SECONDS)
   const [isGameOver, setIsGameOver] = useState(false)
+  const [isGameOverModalOpen, setIsGameOverModalOpen] = useState(false)
   const [screen, setScreen] = useState<GameScreen>('category-select')
-  const [selectedCategoryId, setSelectedCategoryId] = useState<CategoryId>('random')
+  const [selectedCategoryId, setSelectedCategoryId] = useState<CategoryId>('top-100')
+  const [pseudo, setPseudo] = useState('')
+  const [draftPseudo, setDraftPseudo] = useState('')
+  const [pseudoError, setPseudoError] = useState<string | null>(null)
   const [tmdbKey] = useState(INITIAL_TMDB_KEY)
   const [pool, setPool] = useState<Movie[]>([])
   const [isBuildingPool, setIsBuildingPool] = useState(false)
+  const [shouldBuildPool, setShouldBuildPool] = useState(false)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [leaderboardStatus, setLeaderboardStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
+  const [leaderboardMessage, setLeaderboardMessage] = useState<string | null>(null)
+  const [submittedScore, setSubmittedScore] = useState<SubmittedScore | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const isGameOverRef = useRef(false)
   const lastPairRef = useRef<string[]>([])
   const seenMovieIdsRef = useRef<Set<string>>(new Set())
   const hasStartedFirstPairRef = useRef(false)
+  const hasSubmittedScoreRef = useRef(false)
 
   function setNextPair(source: Movie[]) {
     const recentAndSeenIds = [...lastPairRef.current, ...seenMovieIdsRef.current]
@@ -72,13 +94,26 @@ export function useBoxOfficeGame() {
     setScore(0)
     setTimeLeft(ROUND_DURATION_SECONDS)
     setIsGameOver(false)
+    setIsGameOverModalOpen(false)
     setPool([])
+    setShouldBuildPool(false)
+    setLeaderboard([])
+    setLeaderboardStatus('idle')
+    setLeaderboardMessage(null)
+    setSubmittedScore(null)
     lastPairRef.current = []
     seenMovieIdsRef.current = new Set()
     hasStartedFirstPairRef.current = false
+    hasSubmittedScoreRef.current = false
   }
 
   useEffect(() => {
+    const savedPseudo = sessionStorage.getItem(PLAYER_PSEUDO_KEY)?.trim() ?? ''
+    if (isValidPseudo(savedPseudo)) {
+      setPseudo(savedPseudo)
+      setDraftPseudo(savedPseudo)
+    }
+
     const savedBestScore = Number(localStorage.getItem(BEST_SCORE_KEY))
     if (Number.isFinite(savedBestScore)) {
       setBestScore(savedBestScore)
@@ -90,6 +125,15 @@ export function useBoxOfficeGame() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (isGameOver) {
+      const savedPseudo = sessionStorage.getItem(PLAYER_PSEUDO_KEY)?.trim() ?? pseudo
+      setDraftPseudo(savedPseudo)
+      setPseudoError(null)
+      setIsGameOverModalOpen(true)
+    }
+  }, [isGameOver, pseudo])
 
   useEffect(() => {
     isGameOverRef.current = isGameOver
@@ -129,7 +173,7 @@ export function useBoxOfficeGame() {
   }, [pool, screen])
 
   useEffect(() => {
-    if (!tmdbKey || screen !== 'loading') return
+    if (!tmdbKey || !shouldBuildPool) return
 
     let cancelled = false
     let currentSize = 0
@@ -139,18 +183,23 @@ export function useBoxOfficeGame() {
 
     async function buildPool() {
       const category = getCategory(selectedCategoryId)
+      const isTop100 = category.id === 'top-100'
+      const targetPoolCap = isTop100 ? TOP_100_POOL_CAP : POOL_CAP
       const seenIds = new Set<number>()
       const queuedPages = [1]
       let hasQueuedCatalogPages = false
+      const discoverSort = isTop100
+        ? 'revenue.desc'
+        : DISCOVER_SORT_OPTIONS[Math.floor(Math.random() * DISCOVER_SORT_OPTIONS.length)]
 
-      while (!cancelled && queuedPages.length > 0 && currentSize < POOL_CAP) {
+      while (!cancelled && queuedPages.length > 0 && currentSize < targetPoolCap) {
         const page = queuedPages.shift()
         let discoverData
 
         if (!page) break
 
         try {
-          discoverData = await fetchDiscoverPage(tmdbKey, page, category.tmdbGenreId)
+          discoverData = await fetchDiscoverPage(tmdbKey, page, category.tmdbGenreId, discoverSort)
         } catch {
           break
         }
@@ -158,8 +207,10 @@ export function useBoxOfficeGame() {
         if (cancelled) return
 
         if (!hasQueuedCatalogPages) {
-          const maxPage = Math.min(discoverData.total_pages ?? MAX_PAGES, MAX_PAGES)
-          queuedPages.push(...shuffleItems(Array.from({ length: Math.max(maxPage - 1, 0) }, (_, index) => index + 2)))
+          const pageLimit = isTop100 ? TOP_100_DISCOVER_PAGES : MAX_PAGES
+          const maxPage = Math.min(discoverData.total_pages ?? pageLimit, pageLimit)
+          const nextPages = Array.from({ length: Math.max(maxPage - 1, 0) }, (_, index) => index + 2)
+          queuedPages.push(...(isTop100 ? nextPages : shuffleItems(nextPages)))
           hasQueuedCatalogPages = true
         }
 
@@ -173,6 +224,12 @@ export function useBoxOfficeGame() {
         if (cancelled) return
 
         const mapped = details
+          .filter((details): details is TmdbMovieDetails => {
+            if (!details) return false
+            if (category.id === 'top-100') return true
+
+            return details.genres?.[0]?.id === category.tmdbGenreId
+          })
           .filter((details): details is NonNullable<typeof details> => {
             return Boolean(details?.budget && details.revenue && details.poster_path)
           })
@@ -182,7 +239,7 @@ export function useBoxOfficeGame() {
           setPool((previousPool) => {
             const existingIds = new Set(previousPool.map((movie) => movie.id))
             const freshMovies = shuffleItems(mapped.filter((movie) => !existingIds.has(movie.id)))
-            const nextPool = [...previousPool, ...freshMovies].slice(0, POOL_CAP)
+            const nextPool = [...previousPool, ...freshMovies].slice(0, targetPoolCap)
             currentSize = nextPool.length
             accumulatedPool = nextPool
 
@@ -200,9 +257,11 @@ export function useBoxOfficeGame() {
           })
         }
 
-        await new Promise((resolve) => {
-          window.setTimeout(resolve, PAGE_DELAY_MS)
-        })
+        if (hasStartedFirstPairRef.current) {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, PAGE_DELAY_MS)
+          })
+        }
       }
 
       if (!cancelled) {
@@ -217,6 +276,7 @@ export function useBoxOfficeGame() {
         }
 
         setIsBuildingPool(false)
+        setShouldBuildPool(false)
       }
     }
 
@@ -229,7 +289,7 @@ export function useBoxOfficeGame() {
       cancelled = true
       setIsBuildingPool(false)
     }
-  }, [screen, selectedCategoryId, tmdbKey])
+  }, [selectedCategoryId, shouldBuildPool, tmdbKey])
 
   const persistBestScore = useCallback((value: number) => {
     localStorage.setItem(BEST_SCORE_KEY, String(value))
@@ -246,10 +306,69 @@ export function useBoxOfficeGame() {
         return
       }
 
+      setShouldBuildPool(true)
       setScreen('loading')
     },
     [tmdbKey],
   )
+
+  const submitPseudo = useCallback(() => {
+    const nextPseudo = draftPseudo.trim()
+
+    if (!isValidPseudo(nextPseudo)) {
+      setPseudoError('Entre 3 et 20 caractères.')
+      return
+    }
+
+    sessionStorage.setItem(PLAYER_PSEUDO_KEY, nextPseudo)
+    setPseudo(nextPseudo)
+    setDraftPseudo(nextPseudo)
+    setPseudoError(null)
+
+    if (hasSubmittedScoreRef.current) return
+
+    hasSubmittedScoreRef.current = true
+
+    async function syncLeaderboard() {
+      if (!isSupabaseConfigured) {
+        setLeaderboardStatus('unavailable')
+        setLeaderboardMessage("Classement en ligne non configuré.")
+        return
+      }
+
+      setLeaderboardStatus('loading')
+      setLeaderboardMessage(null)
+
+      const category = getCategory(selectedCategoryId)
+      const submitted = await submitScore({
+        pseudo: nextPseudo,
+        categoryId: category.id,
+        categoryLabel: category.label,
+        score,
+      })
+
+      if (submitted.data) {
+        setSubmittedScore(submitted.data)
+      }
+
+      const topScores = await fetchTopScores(LEADERBOARD_LIMIT)
+      setLeaderboard(topScores.data)
+
+      if (submitted.error || topScores.error) {
+        setLeaderboardStatus(topScores.data.length ? 'ready' : 'unavailable')
+        setLeaderboardMessage(submitted.error ?? topScores.error)
+        return
+      }
+
+      setLeaderboardStatus('ready')
+    }
+
+    void syncLeaderboard()
+  }, [draftPseudo, score, selectedCategoryId])
+
+  const closeGameOverModal = useCallback(() => {
+    setIsGameOverModalOpen(false)
+  }, [])
 
   const showCategorySelect = useCallback(() => {
     resetRunState()
@@ -319,18 +438,34 @@ export function useBoxOfficeGame() {
     challenger,
     handlePick,
     isGameOver,
+    isGameOverModalOpen,
     isBuildingPool,
+    leaderboard,
+    leaderboardMessage,
+    leaderboardStatus,
     phase,
     pickSide,
     pool,
+    pseudo,
+    pseudoError,
     restartGame,
     score,
     screen,
     selectedCategory: getCategory(selectedCategoryId),
+    closeGameOverModal,
     showCategorySelect,
     startCategory,
+    submittedScore,
+    submitPseudo,
+    draftPseudo,
+    setDraftPseudo,
     timeLeft,
     tmdbKey,
     wasCorrect,
   }
+}
+
+function isValidPseudo(value: string) {
+  const trimmedValue = value.trim()
+  return trimmedValue.length >= 3 && trimmedValue.length <= 20
 }

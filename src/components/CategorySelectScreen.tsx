@@ -1,4 +1,4 @@
-import { Film, Ticket } from 'lucide-react'
+import { Ticket } from 'lucide-react'
 import type { Category, CategoryId } from '../data/categories'
 import { Button } from './ui/button'
 
@@ -16,9 +16,13 @@ export function CategorySelectScreen({
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-7 bg-[radial-gradient(ellipse_at_top,#221e2a_0%,#15131a_65%)] px-4 py-8 text-center text-[#f3eee3]">
       <header className="max-w-[620px]">
-        <div className="flex items-center justify-center gap-2 text-3xl font-black tracking-widest text-[#e8b339] drop-shadow-[0_0_18px_rgba(232,179,57,0.35)]">
-          <Film size={20} strokeWidth={2.2} />
-          <span>DUEL BOX-OFFICE</span>
+        <div className="flex flex-col items-center justify-center gap-3 text-3xl font-black tracking-widest text-[#e8b339] drop-shadow-[0_0_18px_rgba(232,179,57,0.35)]">
+          <img
+            src="/boxoffice-logo.png"
+            alt="Logo BoxOffice"
+            className="h-24 w-24 rounded-full object-cover shadow-[0_0_30px_rgba(232,179,57,0.18)] sm:h-28 sm:w-28"
+          />
+          <span>BoxOffice</span>
         </div>
         <p className="mt-2 text-sm text-[#9a93a6]">
           Choisis une salle, puis marque le plus de bonnes réponses en 60 secondes.

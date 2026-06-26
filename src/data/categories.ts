@@ -1,5 +1,5 @@
 export type CategoryId =
-  | 'random'
+  | 'top-100'
   | 'thriller'
   | 'policier'
   | 'fantastique'
@@ -19,7 +19,7 @@ export type Category = {
 }
 
 export const CATEGORIES: Category[] = [
-  { id: 'random', label: 'Random', tmdbGenreId: null, fallbackKeywords: [] },
+  { id: 'top-100', label: 'Le Top 100', tmdbGenreId: null, fallbackKeywords: [] },
   { id: 'thriller', label: 'Thriller', tmdbGenreId: 53, fallbackKeywords: ['thriller'] },
   { id: 'policier', label: 'Policier', tmdbGenreId: 80, fallbackKeywords: ['policier', 'polar', 'crime'] },
   { id: 'fantastique', label: 'Fantastique', tmdbGenreId: 14, fallbackKeywords: ['fantastique'] },

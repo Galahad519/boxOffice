@@ -1,12 +1,15 @@
-import { Film } from 'lucide-react'
+import { Film, Ticket, Trophy, X } from 'lucide-react'
 import { CategorySelectScreen } from '../../components/CategorySelectScreen'
 import { PosterCard } from '../../components/PosterCard'
 import { ScoreBoard } from '../../components/ScoreBoard'
 import { VsDivider } from '../../components/VsDivider'
+import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
 import { Skeleton } from '../../components/ui/skeleton'
 import { Toaster } from '../../components/ui/sonner'
 import { useBoxOfficeGame } from '../../hooks/useBoxOfficeGame'
+import type { LeaderboardEntry, SubmittedScore } from '../../types/movie'
 
 export function BoxOfficeDuel() {
   const {
@@ -14,18 +17,29 @@ export function BoxOfficeDuel() {
     categories,
     champion,
     challenger,
+    closeGameOverModal,
     handlePick,
     isGameOver,
+    isGameOverModalOpen,
     isBuildingPool,
+    leaderboard,
+    leaderboardMessage,
+    leaderboardStatus,
     phase,
     pickSide,
     pool,
+    pseudo,
+    pseudoError,
     restartGame,
     score,
     screen,
     selectedCategory,
     showCategorySelect,
     startCategory,
+    submittedScore,
+    submitPseudo,
+    draftPseudo,
+    setDraftPseudo,
     timeLeft,
     wasCorrect,
   } = useBoxOfficeGame()
@@ -76,7 +90,7 @@ export function BoxOfficeDuel() {
 
   return (
     <>
-      <div className="flex min-h-screen flex-col items-center gap-3.5 bg-[radial-gradient(ellipse_at_top,#221e2a_0%,#15131a_65%)] px-4 py-7 text-[#f3eee3] sm:py-9">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3.5 bg-[radial-gradient(ellipse_at_top,#221e2a_0%,#15131a_65%)] px-4 py-4 text-[#f3eee3] sm:py-6">
         <header className="max-w-[480px] text-center">
           <div className="flex items-center justify-center gap-2 text-3xl font-black tracking-widest text-[#e8b339] drop-shadow-[0_0_18px_rgba(232,179,57,0.35)]">
             <Film size={20} strokeWidth={2.2} />
@@ -113,31 +127,7 @@ export function BoxOfficeDuel() {
           />
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          onClick={showCategorySelect}
-          disabled={!isGameOver}
-          className="border-[#e8b339]/35 bg-[#241f2c] px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-[#e8b339] hover:border-[#e8b339] hover:bg-[#2c2733] hover:text-[#e8b339] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#9a93a6]/45 disabled:hover:bg-[#241f2c]"
-        >
-          Changer de catégorie
-        </Button>
-
         <div className="flex min-h-[50px] flex-col items-center justify-center gap-2.5 text-center">
-          {isGameOver && (
-            <>
-              <div className="rounded-md border-[3px] border-[#e8b339] px-5 py-2 text-[22px] font-black tracking-[0.12em] text-[#e8b339]">
-                TEMPS ÉCOULÉ
-              </div>
-              <Button
-                type="button"
-                onClick={restartGame}
-                className="bg-[#e8b339] px-4 py-2 text-sm font-bold text-[#15131a] hover:bg-[#f1c85b]"
-              >
-                Rejouer
-              </Button>
-            </>
-          )}
           {!isGameOver && phase === 'guessing' && (
             <p className="m-0 text-[13px] text-[#9a93a6]">
               Clique sur l'affiche qui, selon toi, a généré le plus de recettes.
@@ -154,8 +144,323 @@ export function BoxOfficeDuel() {
           Ce produit utilise l'API TMDB mais n'est ni avalisé ni certifié par TMDB.
         </p>
       </div>
+      {isGameOver && !isGameOverModalOpen && (
+        <div className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 flex-col gap-2 rounded-lg border border-[#e8b339]/35 bg-[#241f2c] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.35)] sm:flex-row">
+          <Button
+            type="button"
+            onClick={restartGame}
+            className="bg-[#e8b339] text-sm font-bold text-[#15131a] hover:bg-[#f1c85b]"
+          >
+            Rejouer
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={showCategorySelect}
+            className="border-[#e8b339]/35 bg-[#15131a] text-sm font-bold text-[#e8b339] hover:border-[#e8b339] hover:bg-[#2c2733] hover:text-[#e8b339]"
+          >
+            Changer de catégorie
+          </Button>
+        </div>
+      )}
+      {isGameOver && isGameOverModalOpen && (
+        <GameOverModal
+          score={score}
+          bestScore={bestScore}
+          leaderboard={leaderboard}
+          leaderboardMessage={leaderboardMessage}
+          leaderboardStatus={leaderboardStatus}
+          draftPseudo={draftPseudo}
+          onClose={closeGameOverModal}
+          onDraftPseudoChange={setDraftPseudo}
+          onRestart={restartGame}
+          onChangeCategory={showCategorySelect}
+          pseudo={pseudo}
+          pseudoError={pseudoError}
+          submittedScore={submittedScore}
+          onSubmitPseudo={submitPseudo}
+        />
+      )}
       <Toaster />
     </>
+  )
+}
+
+function GameOverModal({
+  score,
+  bestScore,
+  leaderboard,
+  leaderboardMessage,
+  leaderboardStatus,
+  draftPseudo,
+  onClose,
+  onDraftPseudoChange,
+  onRestart,
+  onChangeCategory,
+  onSubmitPseudo,
+  pseudo,
+  pseudoError,
+  submittedScore,
+}: {
+  score: number
+  bestScore: number
+  leaderboard: LeaderboardEntry[]
+  leaderboardMessage: string | null
+  leaderboardStatus: 'idle' | 'loading' | 'ready' | 'unavailable'
+  draftPseudo: string
+  onClose: () => void
+  onDraftPseudoChange: (value: string) => void
+  onRestart: () => void
+  onChangeCategory: () => void
+  onSubmitPseudo: () => void
+  pseudo: string
+  pseudoError: string | null
+  submittedScore: SubmittedScore | null
+}) {
+  const playerIsInTop = leaderboard.some((entry) => {
+    return (
+      entry.pseudo === (submittedScore?.pseudo ?? pseudo) &&
+      entry.score === score &&
+      entry.createdAt === submittedScore?.createdAt
+    )
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#08060a]/75 px-4 backdrop-blur-sm">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="game-over-title"
+        className="relative w-full max-w-[860px] overflow-hidden rounded-xl border border-[#e8b339]/45 bg-[#241f2c] text-[#f3eee3] shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_35px_rgba(232,179,57,0.14)]"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          aria-label="Fermer sans enregistrer"
+          className="absolute right-2 top-2 z-10 text-[#9a93a6] hover:bg-[#2c2733] hover:text-[#f3eee3]"
+        >
+          <X size={16} />
+        </Button>
+        <div className="absolute inset-x-0 top-0 h-1 bg-[#e8b339]" />
+        <div className="grid gap-5 px-5 py-6 md:grid-cols-[minmax(0,0.92fr)_minmax(320px,1.08fr)] md:px-6 md:py-7">
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#e8b339]/50 bg-[#15131a] text-[#e8b339] shadow-[0_0_22px_rgba(232,179,57,0.18)]">
+              <Trophy size={26} />
+            </div>
+
+            <p className="m-0 text-[11px] font-bold uppercase tracking-[0.22em] text-[#9a93a6]">
+              Projection terminée
+            </p>
+            <h2
+              id="game-over-title"
+              className="mt-2 text-3xl font-black uppercase tracking-[0.12em] text-[#e8b339]"
+            >
+              Temps écoulé
+            </h2>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <ScorePanel icon={<Ticket size={16} />} label="Score" value={score} featured />
+              <ScorePanel icon={<Trophy size={16} />} label="Record" value={bestScore} />
+            </div>
+
+            {!submittedScore && (
+              <form
+                className="mt-5 rounded-lg border border-dashed border-[#e8b339]/35 bg-[#15131a] p-3 text-left"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  onSubmitPseudo()
+                }}
+              >
+                <label
+                  htmlFor="score-pseudo"
+                  className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a93a6]"
+                >
+                  Publier ton score
+                </label>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="score-pseudo"
+                    value={draftPseudo}
+                    minLength={3}
+                    maxLength={20}
+                    onChange={(event) => onDraftPseudoChange(event.target.value)}
+                    placeholder="Ton pseudo"
+                    className="h-10 border-white/10 bg-[#241f2c] font-mono text-[#f3eee3] placeholder:text-[#9a93a6]/60 focus-visible:ring-[#e8b339]/45"
+                  />
+                  <Button
+                    type="submit"
+                    className="h-10 bg-[#e8b339] text-sm font-bold text-[#15131a] hover:bg-[#f1c85b]"
+                    disabled={leaderboardStatus === 'loading'}
+                  >
+                    Valider
+                  </Button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="m-0 text-xs text-[#9a93a6]">Optionnel, 3 à 20 caractères.</p>
+                  <p className="m-0 font-mono text-xs text-[#9a93a6]">{draftPseudo.trim().length}/20</p>
+                </div>
+                {pseudoError && <p className="mt-2 text-xs font-semibold text-[#c8253d]">{pseudoError}</p>}
+              </form>
+            )}
+
+            <div className="mt-6 flex flex-col gap-3">
+              <Button
+                type="button"
+                onClick={onRestart}
+                className="h-10 bg-[#e8b339] text-sm font-bold text-[#15131a] hover:bg-[#f1c85b]"
+              >
+                Rejouer
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onChangeCategory}
+                className="h-10 border-[#e8b339]/35 bg-[#15131a] text-sm font-bold text-[#e8b339] hover:border-[#e8b339] hover:bg-[#2c2733] hover:text-[#e8b339]"
+              >
+                Changer de catégorie
+              </Button>
+            </div>
+          </div>
+
+          <LeaderboardPanel
+            entries={leaderboard}
+            isPlayerInTop={playerIsInTop}
+            message={leaderboardMessage}
+            pseudo={pseudo}
+            score={score}
+            status={leaderboardStatus}
+            submittedScore={submittedScore}
+          />
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function LeaderboardPanel({
+  entries,
+  isPlayerInTop,
+  message,
+  pseudo,
+  score,
+  status,
+  submittedScore,
+}: {
+  entries: LeaderboardEntry[]
+  isPlayerInTop: boolean
+  message: string | null
+  pseudo: string
+  score: number
+  status: 'idle' | 'loading' | 'ready' | 'unavailable'
+  submittedScore: SubmittedScore | null
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-[#15131a] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="m-0 text-left text-sm font-black uppercase tracking-[0.16em] text-[#e8b339]">
+          Classement global
+        </h3>
+        <Badge className="bg-[#2c2733] text-[#f3eee3]">Top 20</Badge>
+      </div>
+
+      {status === 'loading' && (
+        <div className="mt-4 space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-9 rounded-md bg-[#2c2733]" />
+          ))}
+        </div>
+      )}
+
+      {status === 'idle' && (
+        <p className="mt-4 rounded-md border border-white/10 bg-[#241f2c] px-3 py-3 text-sm text-[#9a93a6]">
+          Entre ton pseudo pour publier ton score et afficher le classement.
+        </p>
+      )}
+
+      {status === 'unavailable' && (
+        <p className="mt-4 rounded-md border border-white/10 bg-[#241f2c] px-3 py-3 text-sm text-[#9a93a6]">
+          {message ?? "Classement en ligne indisponible."}
+        </p>
+      )}
+
+      {status === 'ready' && (
+        <>
+          <ol className="mt-4 max-h-[310px] space-y-2 overflow-auto pr-1">
+            {entries.map((entry, index) => {
+              const isCurrentPlayer =
+                entry.pseudo === (submittedScore?.pseudo ?? pseudo) &&
+                entry.score === score &&
+                entry.createdAt === submittedScore?.createdAt
+
+              return (
+                <li
+                  key={`${entry.pseudo}-${entry.createdAt}-${index}`}
+                  className={[
+                    'grid grid-cols-[2rem_1fr_auto] items-center gap-2 rounded-md border px-2.5 py-2 text-left',
+                    isCurrentPlayer
+                      ? 'border-[#e8b339]/70 bg-[#e8b339]/10'
+                      : 'border-white/10 bg-[#241f2c]',
+                  ].join(' ')}
+                >
+                  <span className="font-mono text-xs text-[#9a93a6]">#{index + 1}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-[#f3eee3]">{entry.pseudo}</span>
+                    <Badge
+                      variant="secondary"
+                      className="mt-1 h-auto rounded-full bg-[#2c2733] px-2 py-0.5 text-[10px] uppercase text-[#9a93a6]"
+                    >
+                      {entry.categoryLabel}
+                    </Badge>
+                  </span>
+                  <span className="font-mono text-base font-bold text-[#e8b339]">
+                    {String(entry.score).padStart(3, '0')}
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+
+          {!isPlayerInTop && (
+            <p className="mt-3 rounded-md border border-[#e8b339]/25 bg-[#241f2c] px-3 py-2 text-sm text-[#f3eee3]">
+              Ton score : <span className="font-mono text-[#e8b339]">{score}</span> — classé en dehors du top 20.
+            </p>
+          )}
+
+          {message && <p className="mt-3 text-xs text-[#9a93a6]">{message}</p>}
+        </>
+      )}
+    </div>
+  )
+}
+
+function ScorePanel({
+  icon,
+  label,
+  value,
+  featured = false,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: number
+  featured?: boolean
+}) {
+  return (
+    <div
+      className={[
+        'rounded-lg border bg-[#15131a] px-3 py-3',
+        featured ? 'border-[#e8b339]/45' : 'border-white/10',
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#9a93a6]">
+        {icon}
+        {label}
+      </div>
+      <p className="mt-1 font-mono text-3xl font-bold text-[#f3eee3]">
+        {String(value).padStart(3, '0')}
+      </p>
+    </div>
   )
 }
 
