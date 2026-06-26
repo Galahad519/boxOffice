@@ -2,6 +2,7 @@ import { Crown, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { formatMoney } from '../lib/movies'
 import type { Movie } from '../types/movie'
+import { Badge } from './ui/badge'
 
 type PosterCardProps = {
   movie: Movie
@@ -74,9 +75,12 @@ export function PosterCard({
           </p>
           <p className="mt-0.5 font-mono text-xs text-[#f3eee3]/80">{movie.year}</p>
         </div>
-        <p className="relative z-20 m-0 text-[11px] uppercase tracking-wide text-[#f3eee3]/70">
+        <Badge
+          variant="secondary"
+          className="relative z-20 h-auto max-w-full rounded-full border border-[#f3eee3]/15 bg-[#241f2c]/75 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#f3eee3]/80 backdrop-blur-sm"
+        >
           {movie.tag}
-        </p>
+        </Badge>
       </div>
 
       <div className="border-t border-dashed border-[#f3eee3]/25 bg-[#2c2733] px-3.5 py-3">

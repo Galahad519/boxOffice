@@ -1,5 +1,6 @@
 import { Film, Ticket } from 'lucide-react'
 import type { Category, CategoryId } from '../data/categories'
+import { Button } from './ui/button'
 
 type CategorySelectScreenProps = {
   categories: Category[]
@@ -24,17 +25,18 @@ export function CategorySelectScreen({
         </p>
       </header>
 
-      <div className="grid w-full max-w-[760px] grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid w-full max-w-[820px] grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {categories.map((category) => {
           const selected = category.id === selectedCategoryId
 
           return (
-            <button
+            <Button
               key={category.id}
               type="button"
+              variant={selected ? 'default' : 'secondary'}
               onClick={() => onSelectCategory(category.id)}
               className={[
-                'relative overflow-hidden rounded-lg border border-dashed px-3 py-4 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b339]',
+                'relative h-auto w-full flex-col items-stretch justify-start overflow-hidden rounded-lg border border-dashed px-3 py-4 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b339]',
                 selected
                   ? 'border-[#e8b339] bg-[#e8b339] text-[#15131a] shadow-[0_0_20px_rgba(232,179,57,0.25)]'
                   : 'border-[#f3eee3]/25 bg-[#241f2c] text-[#f3eee3] hover:-translate-y-0.5 hover:border-[#e8b339]/70',
@@ -56,10 +58,10 @@ export function CategorySelectScreen({
                 <Ticket size={13} />
                 Catégorie
               </span>
-              <span className="ml-5 mt-2 block text-lg font-black tracking-wide">
+              <span className="ml-5 mt-2 block min-w-0 whitespace-normal break-words text-base font-black leading-tight tracking-normal sm:text-[17px]">
                 {category.label}
               </span>
-            </button>
+            </Button>
           )
         })}
       </div>
